@@ -12,6 +12,6 @@ import { AlertsLogController } from './alerts-log.controller';
   ],
   providers: [AlertsLogService],
   controllers: [AlertsLogController],
-  exports: [TypeOrmModule, AlertsLogService] // Exportamos para que otros módulos lo usen
+  exports: [TypeOrmModule, AlertsLogService]
 })
 export class AlertsLogModule {}

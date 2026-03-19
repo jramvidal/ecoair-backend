@@ -7,8 +7,14 @@ export class UserFavorite {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Column()
+  userId: number;
+
+  @Column()
+  stationId: number;
+
   @Column({ nullable: true })
-  alias: string; // Ejemplo: "Estación cerca de casa"
+  alias: string;
 
   @ManyToOne(() => User)
   user: User;

@@ -7,7 +7,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { lastValueFrom } from 'rxjs';
 import { Station } from './station.entity';
 import { Measurement } from '../measurements/measurement.entity';
-import { AlertsLogService } from '../alerts-log/alerts-log.service'; // Importamos el servicio de alertas
+import { AlertsLogService } from '../alerts-log/alerts-log.service';
 
 @Injectable()
 export class StationsService {
@@ -20,20 +20,24 @@ export class StationsService {
     private measurementsRepository: Repository<Measurement>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    private readonly alertsLogService: AlertsLogService, // Inyectamos el motor de alertas
+    private readonly alertsLogService: AlertsLogService,
   ) {}
 
   // Tarea programada: Sincronización automática
   @Cron(CronExpression.EVERY_HOUR)
   async handleCron() {
-    this.logger.debug('Iniciando sincronización automática de calidad del aire...');
+    this.logger.debug(
+      'Iniciando sincronización automática de calidad del aire...',
+    );
 
     const cities = ['barcelona', 'madrid', 'valencia'];
 
     for (const city of cities) {
       try {
         await this.syncStatonData(city);
-        this.logger.log(`Datos sincronizados y procesados correctamente para: ${city}`);
+        this.logger.log(
+          `Datos sincronizados y procesados correctamente para: ${city}`,
+        );
       } catch (error) {
         this.logger.error(`Error sincronizando ${city}: ${error.message}`);
       }
@@ -74,7 +78,8 @@ export class StationsService {
       station: station,
     });
 
-    const savedMeasurement = await this.measurementsRepository.save(measurement);
+    const savedMeasurement =
+      await this.measurementsRepository.save(measurement);
 
     // 3. ¡CONEXIÓN AL MOTOR DE ALERTAS!
     // Enviamos la medición recién guardada para que se cruce con usuarios y umbrales

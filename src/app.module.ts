@@ -23,12 +23,12 @@ import { AlertsLogModule } from './alerts-log/alerts-log.module';
       autoLoadEntities: true, // Esto ayuda a cargar las entidades automáticamente
       synchronize: true,
     }),
-    UsersModule, // <--- Verifica que esté aquí
+    UsersModule, 
     HealthProfilesModule,
     MeasurementsModule,
     StationsModule,
     UserFavoritesModule,
-    AlertsLogModule, // <--- Y que este también
+    AlertsLogModule, 
   ],
 })
 export class AppModule {}
