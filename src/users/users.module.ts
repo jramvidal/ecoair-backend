@@ -5,7 +5,7 @@ import { UsersController } from './users.controller';
 import { User } from './user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User])], // Esto "activa" la tabla de usuarios
+  imports: [TypeOrmModule.forFeature([User])],
   providers: [UsersService],
   controllers: [UsersController],
 })

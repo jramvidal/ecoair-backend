@@ -5,7 +5,6 @@ import { AlertLog } from './alerts-log.entity';
 import { AlertThreshold } from './alert-threshold.entity';
 import { CreateThresholdDto } from './dto/create-threshold.dto';
 import { Measurement } from '../measurements/measurement.entity';
-import { User } from '../users/user.entity';
 import { UserFavorite } from '../user-favorites/user-favorite.entity';
 
 @Injectable()
@@ -19,7 +18,6 @@ export class AlertsLogService {
     private thresholdRepository: Repository<AlertThreshold>,
   ) {}
 
-  // 1. Gestión de Umbrales (Para el Panel Admin)
   async createThreshold(dto: CreateThresholdDto) {
     const newThreshold = this.thresholdRepository.create(dto);
     return await this.thresholdRepository.save(newThreshold);
@@ -29,24 +27,57 @@ export class AlertsLogService {
     return await this.thresholdRepository.find();
   }
 
-  // 2. MOTOR DE ALERTAS (Lógica de Negocio)
-  async checkAndCreateAlerts(measurement: Measurement) {
-    this.logger.log(`Comprobando alertas para la estación: ${measurement.station.name} (AQI: ${measurement.aqi})`);
+  async updateThreshold(id: number, data: Partial<AlertThreshold>) {
+    await this.thresholdRepository.update(id, data);
+    return await this.thresholdRepository.findOneBy({ id });
+  }
 
-    // Buscamos usuarios que tengan esta estación en sus favoritos
-    // Usamos el QueryBuilder para cruzar User -> HealthProfile -> UserFavorite en una sola consulta
-    const usersWithFavorite = await this.alertLogRepository.manager
-      .createQueryBuilder(User, 'user')
-      .leftJoinAndSelect('user.healthProfile', 'healthProfile')
-      .innerJoin(UserFavorite, 'fav', 'fav.userId = user.id')
-      .where('fav.stationId = :stationId', { stationId: measurement.station.id })
+  async findByUserId(userId: number) {
+    return await this.alertLogRepository.find({
+      where: { user: { id: userId } },
+      order: { sent_at: 'DESC' },
+    });
+  }
+
+  async countByUserId(userId: number): Promise<number> {
+    return await this.alertLogRepository.count({
+      where: { user: { id: userId }, is_read: false },
+    });
+  }
+
+  async markAsRead(userId: number) {
+    await this.alertLogRepository.update(
+      { user: { id: userId }, is_read: false },
+      { is_read: true },
+    );
+    return { success: true };
+  }
+
+  async remove(id: number) {
+    return await this.alertLogRepository.delete(id);
+  }
+
+  async clearAll(userId: number) {
+    return await this.alertLogRepository.delete({ user: { id: userId } });
+  }
+
+  async checkAndCreateAlerts(measurement: Measurement) {
+    const stationName = measurement.station?.name || 'Estación desconocida';
+    const stationFavorites = await this.alertLogRepository.manager
+      .createQueryBuilder(UserFavorite, 'fav')
+      .leftJoinAndSelect('fav.user', 'user')
+      .leftJoinAndSelect('user.healthProfile', 'hp')
+      .where('fav.stationId = :stationId', {
+        stationId: measurement.station?.id || (measurement as any).stationId,
+      })
       .getMany();
 
-    for (const user of usersWithFavorite) {
-      // Si el usuario no tiene perfil de salud completo, saltamos
-      if (!user.healthProfile) continue;
+    if (stationFavorites.length === 0) return;
 
-      // Buscamos la regla (threshold) que coincida con su condición y sensibilidad
+    for (const fav of stationFavorites) {
+      const user = fav.user;
+      if (!user || !user.healthProfile) continue;
+
       const threshold = await this.thresholdRepository.findOne({
         where: {
           condition: user.healthProfile.condition,
@@ -54,18 +85,16 @@ export class AlertsLogService {
         },
       });
 
-      // Si existe una regla y el AQI actual es mayor o igual al mínimo configurado...
       if (threshold && measurement.aqi >= threshold.min_aqi) {
-        this.logger.warn(`¡Alerta detectada para el usuario ${user.email}!`);
-
-        // Creamos el registro en el historial de alertas (AlertLog)
+        const alertMessage = `[Alerta en ${fav.alias || stationName}] ${threshold.message_template} (Nivel AQI: ${measurement.aqi})`;
         const newAlert = this.alertLogRepository.create({
-          message: `${threshold.message_template} [AQI: ${measurement.aqi} en ${measurement.station.name}]`,
+          message: alertMessage,
           user: user,
           measurement: measurement,
+          is_read: false,
         });
-
         await this.alertLogRepository.save(newAlert);
+        this.logger.warn(`Alerta guardada para ${user.email}`);
       }
     }
   }

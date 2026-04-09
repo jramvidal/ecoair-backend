@@ -4,16 +4,16 @@ import { User } from '../users/user.entity';
 @Entity('health_profiles')
 export class HealthProfile {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  condition: string; // Ejemplo: 'Asma', 'Alergia al polen', 'EPOC'
+  condition!: string; // Example: 'Asma', 'Alergia al polen', 'EPOC'
 
   @Column()
-  sensitivityLevel: string; // Ejemplo: 'Alta', 'Media', 'Baja'
+  sensitivityLevel!: string; // Example: 'Alta', 'Media', 'Baja'
 
-  // Relación 1:1 inversa con el Usuario
-  // No lleva @JoinColumn() porque el "dueño" de la relación es el Usuario
+  // Inverse 1:1 relationship with the User entity.
+  // The @JoinColumn() decorator is omitted because the User entity is the owning side of the relationship.
   @OneToOne(() => User, (user) => user.healthProfile)
-  user: User;
+  user!: User;
 }

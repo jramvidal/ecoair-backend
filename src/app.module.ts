@@ -11,8 +11,8 @@ import { AlertsLogModule } from './alerts-log/alerts-log.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }), // <--- Carga el .env para toda la app
-    ScheduleModule.forRoot(), // <--- Activa el reloj interno de NestJS
+    ConfigModule.forRoot({ isGlobal: true }), // <--- Load the .env file for the whole application.
+    ScheduleModule.forRoot(), // <--- Enable the internal NestJS clock.
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: 'localhost',
@@ -20,7 +20,7 @@ import { AlertsLogModule } from './alerts-log/alerts-log.module';
       username: 'user_ecoair',
       password: 'password_ecoair',
       database: 'ecoair_db',
-      autoLoadEntities: true, // Esto ayuda a cargar las entidades automáticamente
+      autoLoadEntities: true, // This enables automatic entity loading.
       synchronize: true,
     }),
     UsersModule, 

@@ -7,7 +7,7 @@ import { AlertsLogController } from './alerts-log.controller';
 
 @Module({
   imports: [
-    // Registramos ambas entidades aquí
+    // Register both entities here.
     TypeOrmModule.forFeature([AlertLog, AlertThreshold]) 
   ],
   providers: [AlertsLogService],

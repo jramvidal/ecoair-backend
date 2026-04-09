@@ -7,7 +7,7 @@ import { LoginDto } from './dto/login.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post('register') // Ahora la URL es POST http://localhost:3000/users/register
+  @Post('register')
   async register(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }

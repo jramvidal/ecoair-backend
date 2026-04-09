@@ -9,16 +9,16 @@ import { AlertsLogModule } from '../alerts-log/alerts-log.module';
 
 @Module({
   imports: [
-    // Registramos las entidades que el StationsService usará directamente
+    // Register the entities that StationsService will use directly.
     TypeOrmModule.forFeature([Station, Measurement]),
-    // Necesario para las peticiones a la API de WAQI
+    // Required for WAQI API requests.
     HttpModule,
-    // Importamos el módulo de alertas para poder inyectar su servicio
+    // Import AlertsModule to enable service injection.
     AlertsLogModule 
   ],
   providers: [StationsService],
   controllers: [StationsController],
-  // Exportamos StationsService por si en el futuro lo necesitamos en otros módulos
+  // Export StationsService for potential future use in other modules.
   exports: [StationsService] 
 })
 export class StationsModule {}

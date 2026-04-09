@@ -5,17 +5,20 @@ import { Measurement } from '../measurements/measurement.entity';
 @Entity('alerts_log')
 export class AlertLog {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number; 
 
-  @Column()
-  message: string; // Ejemplo: "Calidad del aire mala para tu asma en Eixample"
+  @Column('text')
+  message!: string; 
 
   @CreateDateColumn()
-  sent_at: Date;
+  sent_at!: Date; 
 
-  @ManyToOne(() => User)
-  user: User;
+  @Column({ default: false })
+  is_read!: boolean; 
+
+  @ManyToOne(() => User, (user) => user.alerts)
+  user!: User; 
 
   @ManyToOne(() => Measurement)
-  measurement: Measurement;
+  measurement!: Measurement; 
 }

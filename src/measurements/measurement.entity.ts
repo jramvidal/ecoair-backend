@@ -4,21 +4,21 @@ import { Station } from '../stations/station.entity';
 @Entity('measurements')
 export class Measurement {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column('float')
-  aqi: number;
+  aqi!: number;
 
   @Column('float', { nullable: true })
-  pm25: number;
+  pm25!: number;
 
   @Column('float', { nullable: true })
-  no2: number;
+  no2!: number;
 
   @CreateDateColumn()
-  timestamp: Date;
+  timestamp!: Date;
 
-  // Relación inversa: Muchas mediciones para una sola estación
+  // Inverse One-to-Many relationship with the Station entity.
   @ManyToOne(() => Station, (station) => station.measurements)
-  station: Station;
+  station!: Station;
 }

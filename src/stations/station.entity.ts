@@ -1,24 +1,28 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
 import { Measurement } from '../measurements/measurement.entity';
+import { UserFavorite } from '../user-favorites/user-favorite.entity'; 
 
 @Entity('stations')
 export class Station {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ unique: true })
-  external_id: string; 
+  external_id!: string; 
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column('float')
-  lat: number;
+  lat!: number;
 
   @Column('float')
-  lon: number;
+  lon!: number;
 
-  // Usamos una función flecha () => Measurement para manejar la carga diferida
   @OneToMany(() => Measurement, (measurement) => measurement.station)
-  measurements: Measurement[];
+  measurements!: Measurement[];
+
+  // The relational link to favorites.
+  @OneToMany(() => UserFavorite, (userFavorite) => userFavorite.station)
+  userFavorites!: UserFavorite[];
 }
