@@ -24,8 +24,12 @@ export class AlertsLogService {
   }
 
   async getAllThresholds() {
-    return await this.thresholdRepository.find();
-  }
+  return await this.thresholdRepository.find({
+    order: {
+      id: 'ASC', // ASC = Ascendente (1, 2, 3...)
+    },
+  });
+}
 
   async updateThreshold(id: number, data: Partial<AlertThreshold>) {
     await this.thresholdRepository.update(id, data);

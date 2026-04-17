@@ -30,16 +30,23 @@ export class UserFavoritesService {
     return await this.favoritesRepository.save(favorite);
   }
 
-  // Retrieve favorites including their associated station and its measurements.
+  // Retrieve favorites including their associated station and its measurements ORDERED.
   async findAllByUser(userId: number) {
     return await this.favoritesRepository.find({
       where: { userId },
       relations: ['station', 'station.measurements'],
-      order: { id: 'DESC' } // Los más nuevos primero
+      order: { 
+        id: 'DESC', // Orden de la lista de favoritos
+        station: {
+          measurements: {
+            timestamp: 'DESC' // <--- CRITICO: El dato más nuevo siempre será el [0]
+          }
+        }
+      }
     });
   }
 
-  // NUEVO: Remove a favorite (Unfollow).
+  // Remove a favorite (Unfollow).
   async remove(id: number) {
     const result = await this.favoritesRepository.delete(id);
     if (result.affected === 0) {

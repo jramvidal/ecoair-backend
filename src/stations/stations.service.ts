@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
-import { CronJob } from 'cron'; // Necesario para crear jobs dinámicos
+import { CronJob } from 'cron'; 
 import { lastValueFrom } from 'rxjs';
 import { Station } from './station.entity';
 import { Measurement } from '../measurements/measurement.entity';
@@ -23,44 +23,20 @@ export class StationsService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly alertsLogService: AlertsLogService,
-    private schedulerRegistry: SchedulerRegistry, // Inyectado para control dinámico
+    private schedulerRegistry: SchedulerRegistry,
   ) {}
 
-  // ADMIN METHOD: Update frequency.
-  updateCronFrequency(minutes: number) {
-    const jobName = 'sync-favorites';
-    
-    // 1. Stop and delete the previous job if it exists.
-    try {
-      const oldJob = this.schedulerRegistry.getCronJob(jobName);
-      oldJob.stop();
-      this.schedulerRegistry.deleteCronJob(jobName);
-    } catch (e) {
-      this.logger.warn('No había un Cron Job previo para borrar.');
-    }
+  // --- HISTORY METHODS ---
 
-    // 2. Create the new cron pattern (0 */minutes * * * *)
-    const pattern = minutes === 1 ? '0 * * * * *' : '0 0 * * * *';
-    this.currentFrequency = minutes === 1 ? '1 minuto' : '1 hora';
-
-    const job = new CronJob(pattern, () => {
-      this.handleHourlySync();
+  async getStationHistory(stationId: number, limit: number) {
+    return await this.measurementsRepository.find({
+      where: { station: { id: stationId } },
+      order: { timestamp: 'DESC' },
+      take: limit,
     });
-
-    this.schedulerRegistry.addCronJob(jobName, job);
-    job.start();
-
-    this.logger.log(`Cron Job actualizado a frecuencia: ${this.currentFrequency}`);
-    return { frequency: this.currentFrequency };
   }
 
-  getCronStatus() {
-    return { frequency: this.currentFrequency };
-  }
-
-  async findAll(): Promise<Station[]> {
-    return await this.stationsRepository.find({ relations: ['measurements'] });
-  }
+  // --- SYNCHRONIZATION METHODS ---
 
   async syncByBounds(lat1: number, lon1: number, lat2: number, lon2: number) {
     const token = this.configService.get<string>('WAQI_TOKEN');
@@ -104,17 +80,17 @@ export class StationsService {
     const token = this.configService.get<string>('WAQI_TOKEN');
     const url = `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${token}`;
     const response = await lastValueFrom(this.httpService.get(url));
-    return await this.processWaqiData(response.data.data);
+    return await this.processWaqiData(response.data.data, false);
   }
 
-  async syncStationData(city: string) {
+  async syncStationData(city: string, isCron: boolean = false) {
     const token = this.configService.get<string>('WAQI_TOKEN');
     const url = `https://api.waqi.info/feed/${city}/?token=${token}`;
     const response = await lastValueFrom(this.httpService.get(url));
-    return await this.processWaqiData(response.data.data);
+    return await this.processWaqiData(response.data.data, isCron);
   }
 
-  private async processWaqiData(data: any) {
+  private async processWaqiData(data: any, isCron: boolean = false) {
     let station = await this.stationsRepository.findOne({
       where: { external_id: data.idx.toString() },
       relations: ['measurements']
@@ -130,18 +106,25 @@ export class StationsService {
       station = await this.stationsRepository.save(station);
     }
 
-    const newAqi = data.aqi;
-    const newPm25 = data.iaqi.pm25?.v || 0;
-    const newNo2 = data.iaqi.no2?.v || 0;
+    // --- DATA ERROR FIX ---
+    // We check whether the AQI is a valid number. If it is "-" or not numeric, we discard it
+    const rawAqi = data.aqi;
+    if (rawAqi === '-' || rawAqi === null || rawAqi === undefined || isNaN(Number(rawAqi))) {
+      this.logger.warn(`[SYNC] Estación ${station.name} devolvió un AQI inválido ("${rawAqi}"). No se guardará esta medición.`);
+      return null; 
+    }
+
+    const newAqi = Number(rawAqi);
+    const newPm25 = data.iaqi?.pm25?.v || 0;
+    const newNo2 = data.iaqi?.no2?.v || 0;
 
     const lastM = await this.measurementsRepository.findOne({
         where: { station: { id: station.id } },
         order: { timestamp: 'DESC' },
-        relations: ['station']
     });
 
-    if (lastM && lastM.aqi === newAqi && lastM.pm25 === newPm25 && lastM.no2 === newNo2) {
-      this.logger.log(`Datos idénticos para ${station.name}. Comprobando alertas...`);
+    if (lastM && !isCron && lastM.aqi === newAqi && lastM.pm25 === newPm25 && lastM.no2 === newNo2) {
+      this.logger.log(`[MANUAL] Datos idénticos para ${station.name}. No se guarda duplicado.`);
       await this.alertsLogService.checkAndCreateAlerts(lastM);
       return lastM;
     }
@@ -154,11 +137,18 @@ export class StationsService {
     });
 
     const savedMeasurement = await this.measurementsRepository.save(measurement);
+    
+    if (isCron) {
+      this.logger.log(`[CRON] Historial guardado para ${station.name} (AQI: ${newAqi})`);
+    }
+
     await this.alertsLogService.checkAndCreateAlerts(savedMeasurement);
     return savedMeasurement;
   }
 
-  @Cron(CronExpression.EVERY_HOUR, { name: 'sync-favorites' }) // Assign a name to the job.
+  // --- CRON JOBS ---
+
+  @Cron(CronExpression.EVERY_HOUR, { name: 'sync-favorites' })
   async handleHourlySync() {
     this.logger.log('--- INICIANDO SINCRONIZACIÓN DE FAVORITOS ---');
     try {
@@ -168,11 +158,51 @@ export class StationsService {
         .getMany();
 
       for (const st of activeStations) {
-        await this.syncStationData(`@${st.external_id}`);
+        await this.syncStationData(`@${st.external_id}`, true);
       }
       this.logger.log('--- SINCRONIZACIÓN FINALIZADA ---');
     } catch (error) {
       this.logger.error('Error en Cron Job:', error);
     }
+  }
+
+  // --- OTHER METHODS ---
+
+  updateCronFrequency(minutes: number) {
+    const jobName = 'sync-favorites';
+    try {
+      const oldJob = this.schedulerRegistry.getCronJob(jobName);
+      oldJob.stop();
+      this.schedulerRegistry.deleteCronJob(jobName);
+    } catch (e) {
+      this.logger.warn('No había un Cron Job previo para borrar.');
+    }
+
+    const pattern = minutes === 1 ? '0 * * * * *' : '0 0 * * * *';
+    this.currentFrequency = minutes === 1 ? '1 minuto' : '1 hora';
+
+    const job = new CronJob(pattern, () => {
+      this.handleHourlySync();
+    });
+
+    this.schedulerRegistry.addCronJob(jobName, job);
+    job.start();
+    this.logger.log(`Cron Job actualizado a: ${this.currentFrequency}`);
+    return { frequency: this.currentFrequency };
+  }
+
+  async findAll(): Promise<Station[]> {
+    return await this.stationsRepository.find({ 
+      relations: ['measurements'],
+      order: {
+        measurements: {
+          timestamp: 'DESC'
+        }
+      }
+    });
+  }
+
+  getCronStatus() {
+    return { frequency: this.currentFrequency };
   }
 }

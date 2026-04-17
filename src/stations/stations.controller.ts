@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { StationsService } from './stations.service';
 
 @Controller('stations')
@@ -10,13 +10,20 @@ export class StationsController {
     return await this.stationsService.findAll();
   }
 
-  // NEW ADMIN ROUTE: View Cron status.
+  // --- NEW ROUTE: Fetch history for charts ---
+  @Get(':id/history')
+  async getStationHistory(
+    @Param('id') id: string, 
+    @Query('limit') limit: number = 24 // By default, the last 24 readings
+  ) {
+    return await this.stationsService.getStationHistory(+id, limit);
+  }
+
   @Get('cron/status')
   async getCronStatus() {
     return this.stationsService.getCronStatus();
   }
 
-  // NEW ADMIN ROUTE: Change frequency.
   @Post('cron/frequency')
   async updateFrequency(@Body() body: { minutes: number }) {
     return this.stationsService.updateCronFrequency(body.minutes);

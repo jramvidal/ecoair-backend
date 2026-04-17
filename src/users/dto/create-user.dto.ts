@@ -4,7 +4,7 @@ export class CreateUserDto {
   readonly email!: string;
   readonly password!: string;
   readonly name?: string;
-  readonly role?: Role; // Opcional, si no se envía será 'user'
+  readonly role?: Role; // Optional, if not provided, it will be 'user'
 
   readonly healthProfile?: {
     readonly condition: string;
