@@ -1,25 +1,45 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
-import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+// Cambiamos el import por require para evitar errores de tipado en la función
+const request = require('supertest'); 
+
+import { StationsController } from './../src/stations/stations.controller';
+import { StationsService } from './../src/stations/stations.service';
 
 describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication;
+
+  const mockStationsService = {
+    findAll: () => [{ id: 1, name: 'Estación Test E2E', aqi: 10 }],
+  };
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      controllers: [StationsController],
+      providers: [
+        {
+          provide: StationsService,
+          useValue: mockStationsService,
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  afterAll(async () => {
+    // Cerramos la app correctamente al terminar
+    if (app) {
+      await app.close();
+    }
+  });
+
+  it('/stations (GET)', () => {
+    // Ahora 'request' debería ser reconocido como una función sin problemas
     return request(app.getHttpServer())
-      .get('/')
+      .get('/stations')
       .expect(200)
-      .expect('Hello World!');
+      .expect(mockStationsService.findAll());
   });
 });
