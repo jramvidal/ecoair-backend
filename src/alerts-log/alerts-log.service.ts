@@ -24,12 +24,13 @@ export class AlertsLogService {
   }
 
   async getAllThresholds() {
-  return await this.thresholdRepository.find({
-    order: {
-      id: 'ASC', // ASC = Ascendente (1, 2, 3...)
-    },
-  });
-}
+    return await this.thresholdRepository.find({
+      order: {
+        condition: 'ASC',   // Orden alfabético por la patología (Asma, Bronquitis...)
+        sensitivity: 'ASC', // Segundo criterio: por nivel de sensibilidad (Alta, Baja...)
+      },
+    });
+  }
 
   async updateThreshold(id: number, data: Partial<AlertThreshold>) {
     await this.thresholdRepository.update(id, data);
