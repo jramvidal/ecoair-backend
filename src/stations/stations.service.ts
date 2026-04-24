@@ -178,8 +178,8 @@ export class StationsService {
       this.logger.warn('No había un Cron Job previo para borrar.');
     }
 
-    const pattern = minutes === 1 ? '0 * * * * *' : '0 0 * * * *';
-    this.currentFrequency = minutes === 1 ? '1 minuto' : '1 hora';
+    const pattern = minutes === 2 ? '0 */2 * * * *' : '0 0 * * * *';
+    this.currentFrequency = minutes === 2 ? '2 minutos' : '1 hora';
 
     const job = new CronJob(pattern, () => {
       this.handleHourlySync();
