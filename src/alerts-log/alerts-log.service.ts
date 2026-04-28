@@ -26,8 +26,8 @@ export class AlertsLogService {
   async getAllThresholds() {
     return await this.thresholdRepository.find({
       order: {
-        condition: 'ASC',   // Orden alfabético por la patología (Asma, Bronquitis...)
-        sensitivity: 'ASC', // Segundo criterio: por nivel de sensibilidad (Alta, Baja...)
+        condition: 'ASC',   // Alphabetical order by pathology
+        sensitivity: 'ASC', // Second criteria: by sensitivity level
       },
     });
   }
@@ -45,12 +45,14 @@ export class AlertsLogService {
   }
 
   async countByUserId(userId: number): Promise<number> {
+    // Counts all alerts that the user has not yet marked as read
     return await this.alertLogRepository.count({
       where: { user: { id: userId }, is_read: false },
     });
   }
 
   async markAsRead(userId: number) {
+    // Updates the status of ALL pending alerts for the user to "read"
     await this.alertLogRepository.update(
       { user: { id: userId }, is_read: false },
       { is_read: true },
@@ -67,14 +69,24 @@ export class AlertsLogService {
   }
 
   async checkAndCreateAlerts(measurement: Measurement) {
-    const stationName = measurement.station?.name || 'Estación desconocida';
+    // 1. SAFELY EXTRACT STATION ID
+    // TypeORM sometimes doesn't load the 'station' relation after a save operation.
+    // We check both the object property and the raw ID to avoid identifying errors.
+    const stationId = measurement.station?.id || (measurement as any).stationId;
+    const stationName = measurement.station?.name || 'Station';
+
+    if (!stationId) {
+      this.logger.error('Could not identify the station to process alerts.');
+      return;
+    }
+
+    // 2. FETCH FAVORITES
+    // Find all users who have this station in their favorites list.
     const stationFavorites = await this.alertLogRepository.manager
       .createQueryBuilder(UserFavorite, 'fav')
       .leftJoinAndSelect('fav.user', 'user')
       .leftJoinAndSelect('user.healthProfile', 'hp')
-      .where('fav.stationId = :stationId', {
-        stationId: measurement.station?.id || (measurement as any).stationId,
-      })
+      .where('fav.stationId = :stationId', { stationId })
       .getMany();
 
     if (stationFavorites.length === 0) return;
@@ -83,6 +95,8 @@ export class AlertsLogService {
       const user = fav.user;
       if (!user || !user.healthProfile) continue;
 
+      // 3. FETCH THRESHOLD
+      // Find the specific threshold for the user's pathology and sensitivity level.
       const threshold = await this.thresholdRepository.findOne({
         where: {
           condition: user.healthProfile.condition,
@@ -90,16 +104,34 @@ export class AlertsLogService {
         },
       });
 
+      // 4. VALIDATE AGAINST THRESHOLD
       if (threshold && measurement.aqi >= threshold.min_aqi) {
-        const alertMessage = `[Alerta en ${fav.alias || stationName}] ${threshold.message_template} (Nivel AQI: ${measurement.aqi})`;
-        const newAlert = this.alertLogRepository.create({
-          message: alertMessage,
-          user: user,
-          measurement: measurement,
-          is_read: false,
+        
+        // --- ACCUMULATION LOGIC ---
+        // Check if an UNREAD alert already exists for this user and THIS exact measurement.
+        // This prevents duplicate alerts within the same synchronization cycle.
+        const existingAlert = await this.alertLogRepository.findOne({
+          where: { 
+            user: { id: user.id }, 
+            measurement: { id: measurement.id },
+            is_read: false 
+          }
         });
-        await this.alertLogRepository.save(newAlert);
-        this.logger.warn(`Alerta guardada para ${user.email}`);
+
+        if (!existingAlert) {
+          const alertMessage = `[Alert in ${fav.alias || stationName}] ${threshold.message_template} (AQI: ${measurement.aqi})`;
+          
+          // Create a NEW record (ensures the badge accumulates: 1, 2, 3...)
+          const newAlert = this.alertLogRepository.create({
+            message: alertMessage,
+            user: user,
+            measurement: measurement,
+            is_read: false, // Default status for new alerts
+          });
+
+          await this.alertLogRepository.save(newAlert);
+          this.logger.warn(`New alert accumulated for ${user.email}. AQI: ${measurement.aqi}`);
+        }
       }
     }
   }
