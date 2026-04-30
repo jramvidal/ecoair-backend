@@ -28,6 +28,9 @@ export class StationsService {
 
   // --- HISTORY METHODS ---
 
+  /**
+   * Retrieves the measurement history for a specific station
+   */
   async getStationHistory(stationId: number, limit: number) {
     return await this.measurementsRepository.find({
       where: { station: { id: stationId } },
@@ -38,6 +41,9 @@ export class StationsService {
 
   // --- SYNCHRONIZATION METHODS ---
 
+  /**
+   * Synchronizes stations within specific geographic bounds
+   */
   async syncByBounds(lat1: number, lon1: number, lat2: number, lon2: number) {
     const token = this.configService.get<string>('WAQI_TOKEN');
     const url = `https://api.waqi.info/map/bounds/?latlng=${lat1},${lon1},${lat2},${lon2}&token=${token}`;
@@ -76,6 +82,9 @@ export class StationsService {
     }
   }
 
+  /**
+   * Synchronizes data based on specific coordinates
+   */
   async syncByCoords(lat: number, lon: number) {
     const token = this.configService.get<string>('WAQI_TOKEN');
     const url = `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${token}`;
@@ -83,6 +92,9 @@ export class StationsService {
     return await this.processWaqiData(response.data.data, false);
   }
 
+  /**
+   * Synchronizes data for a specific city or station ID
+   */
   async syncStationData(city: string, isCron: boolean = false) {
     const token = this.configService.get<string>('WAQI_TOKEN');
     const url = `https://api.waqi.info/feed/${city}/?token=${token}`;
@@ -90,6 +102,9 @@ export class StationsService {
     return await this.processWaqiData(response.data.data, isCron);
   }
 
+  /**
+   * Processes WAQI API response data and triggers alert checks
+   */
   private async processWaqiData(data: any, isCron: boolean = false) {
     let station = await this.stationsRepository.findOne({
       where: { external_id: data.idx.toString() },
@@ -106,11 +121,10 @@ export class StationsService {
       station = await this.stationsRepository.save(station);
     }
 
-    // --- DATA ERROR FIX ---
-    // We check whether the AQI is a valid number. If it is "-" or not numeric, we discard it
+    // --- DATA VALIDATION ---
     const rawAqi = data.aqi;
     if (rawAqi === '-' || rawAqi === null || rawAqi === undefined || isNaN(Number(rawAqi))) {
-      this.logger.warn(`[SYNC] Estación ${station.name} devolvió un AQI inválido ("${rawAqi}"). No se guardará esta medición.`);
+      this.logger.warn(`[SYNC] Station ${station.name} returned invalid AQI ("${rawAqi}"). Skipping measurement.`);
       return null; 
     }
 
@@ -118,17 +132,22 @@ export class StationsService {
     const newPm25 = data.iaqi?.pm25?.v || 0;
     const newNo2 = data.iaqi?.no2?.v || 0;
 
+    // FIX: Included 'station' relation to avoid identification errors in AlertsLogService
     const lastM = await this.measurementsRepository.findOne({
         where: { station: { id: station.id } },
         order: { timestamp: 'DESC' },
+        relations: ['station'], 
     });
 
+    // --- DUPLICATE CHECK ---
     if (lastM && !isCron && lastM.aqi === newAqi && lastM.pm25 === newPm25 && lastM.no2 === newNo2) {
-      this.logger.log(`[MANUAL] Datos idénticos para ${station.name}. No se guarda duplicado.`);
+      this.logger.log(`[MANUAL] Identical data for ${station.name}. Skipping duplicate save.`);
+      // Even if duplicate, we check for alerts using the existing measurement with station data
       await this.alertsLogService.checkAndCreateAlerts(lastM);
       return lastM;
     }
 
+    // --- SAVE NEW MEASUREMENT ---
     const measurement = this.measurementsRepository.create({
       aqi: newAqi,
       pm25: newPm25,
@@ -138,8 +157,11 @@ export class StationsService {
 
     const savedMeasurement = await this.measurementsRepository.save(measurement);
     
+    // Ensure the station relation is attached before alert processing
+    savedMeasurement.station = station;
+
     if (isCron) {
-      this.logger.log(`[CRON] Historial guardado para ${station.name} (AQI: ${newAqi})`);
+      this.logger.log(`[CRON] History saved for ${station.name} (AQI: ${newAqi})`);
     }
 
     await this.alertsLogService.checkAndCreateAlerts(savedMeasurement);
@@ -150,7 +172,7 @@ export class StationsService {
 
   @Cron(CronExpression.EVERY_HOUR, { name: 'sync-favorites' })
   async handleHourlySync() {
-    this.logger.log('--- INICIANDO SINCRONIZACIÓN DE FAVORITOS ---');
+    this.logger.log('--- STARTING FAVORITES SYNCHRONIZATION ---');
     try {
       const activeStations = await this.stationsRepository
         .createQueryBuilder('station')
@@ -160,14 +182,17 @@ export class StationsService {
       for (const st of activeStations) {
         await this.syncStationData(`@${st.external_id}`, true);
       }
-      this.logger.log('--- SINCRONIZACIÓN FINALIZADA ---');
+      this.logger.log('--- SYNCHRONIZATION FINISHED ---');
     } catch (error) {
-      this.logger.error('Error en Cron Job:', error);
+      this.logger.error('Error in Cron Job:', error);
     }
   }
 
   // --- OTHER METHODS ---
 
+  /**
+   * Dynamically updates the synchronization frequency
+   */
   updateCronFrequency(minutes: number) {
     const jobName = 'sync-favorites';
     try {
@@ -175,7 +200,7 @@ export class StationsService {
       oldJob.stop();
       this.schedulerRegistry.deleteCronJob(jobName);
     } catch (e) {
-      this.logger.warn('No había un Cron Job previo para borrar.');
+      this.logger.warn('No previous Cron Job found to delete.');
     }
 
     const pattern = minutes === 2 ? '0 */2 * * * *' : '0 0 * * * *';
@@ -187,10 +212,13 @@ export class StationsService {
 
     this.schedulerRegistry.addCronJob(jobName, job);
     job.start();
-    this.logger.log(`Cron Job actualizado a: ${this.currentFrequency}`);
+    this.logger.log(`Cron Job updated to: ${this.currentFrequency}`);
     return { frequency: this.currentFrequency };
   }
 
+  /**
+   * Returns all stations with their latest measurements
+   */
   async findAll(): Promise<Station[]> {
     return await this.stationsRepository.find({ 
       relations: ['measurements'],
@@ -202,6 +230,9 @@ export class StationsService {
     });
   }
 
+  /**
+   * Gets current cron status
+   */
   getCronStatus() {
     return { frequency: this.currentFrequency };
   }

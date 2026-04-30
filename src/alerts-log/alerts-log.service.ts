@@ -18,11 +18,17 @@ export class AlertsLogService {
     private thresholdRepository: Repository<AlertThreshold>,
   ) {}
 
+  /**
+   * Creates a new alert threshold for health conditions
+   */
   async createThreshold(dto: CreateThresholdDto) {
     const newThreshold = this.thresholdRepository.create(dto);
     return await this.thresholdRepository.save(newThreshold);
   }
 
+  /**
+   * Retrieves all thresholds ordered by pathology and sensitivity
+   */
   async getAllThresholds() {
     return await this.thresholdRepository.find({
       order: {
@@ -32,11 +38,17 @@ export class AlertsLogService {
     });
   }
 
+  /**
+   * Updates an existing threshold partially
+   */
   async updateThreshold(id: number, data: Partial<AlertThreshold>) {
     await this.thresholdRepository.update(id, data);
     return await this.thresholdRepository.findOneBy({ id });
   }
 
+  /**
+   * Finds alerts associated with a specific user
+   */
   async findByUserId(userId: number) {
     return await this.alertLogRepository.find({
       where: { user: { id: userId } },
@@ -44,6 +56,9 @@ export class AlertsLogService {
     });
   }
 
+  /**
+   * Counts unread alerts for the notification badge
+   */
   async countByUserId(userId: number): Promise<number> {
     // Counts all alerts that the user has not yet marked as read
     return await this.alertLogRepository.count({
@@ -51,6 +66,9 @@ export class AlertsLogService {
     });
   }
 
+  /**
+   * Marks all user alerts as read
+   */
   async markAsRead(userId: number) {
     // Updates the status of ALL pending alerts for the user to "read"
     await this.alertLogRepository.update(
@@ -60,28 +78,42 @@ export class AlertsLogService {
     return { success: true };
   }
 
+  /**
+   * Deletes a single alert log by ID
+   */
   async remove(id: number) {
     return await this.alertLogRepository.delete(id);
   }
 
+  /**
+   * Clears the entire alert history for a user
+   */
   async clearAll(userId: number) {
     return await this.alertLogRepository.delete({ user: { id: userId } });
   }
 
+  /**
+   * Core logic: Analyzes a measurement and generates alerts for interested users
+   */
   async checkAndCreateAlerts(measurement: Measurement) {
-    // 1. SAFELY EXTRACT STATION ID
-    // TypeORM sometimes doesn't load the 'station' relation after a save operation.
-    // We check both the object property and the raw ID to avoid identifying errors.
-    const stationId = measurement.station?.id || (measurement as any).stationId;
+    // 1. ROBUST STATION IDENTIFICATION
+    // TypeORM relations can be unpredictable after save operations.
+    // We check several possible paths to find the station identifier.
+    const stationId = 
+      measurement.station?.id || 
+      (measurement as any).stationId || 
+      (typeof measurement.station === 'number' ? measurement.station : null);
+
     const stationName = measurement.station?.name || 'Station';
 
     if (!stationId) {
-      this.logger.error('Could not identify the station to process alerts.');
+      // Log the full object to help debug why the station is missing
+      this.logger.error(`Could not identify the station to process alerts. Data received: ${JSON.stringify(measurement)}`);
       return;
     }
 
-    // 2. FETCH FAVORITES
-    // Find all users who have this station in their favorites list.
+    // 2. FETCH USERS WHO FAVORITED THIS STATION
+    // Includes health profile data to evaluate against thresholds.
     const stationFavorites = await this.alertLogRepository.manager
       .createQueryBuilder(UserFavorite, 'fav')
       .leftJoinAndSelect('fav.user', 'user')
@@ -95,8 +127,8 @@ export class AlertsLogService {
       const user = fav.user;
       if (!user || !user.healthProfile) continue;
 
-      // 3. FETCH THRESHOLD
-      // Find the specific threshold for the user's pathology and sensitivity level.
+      // 3. RETRIEVE RELEVANT THRESHOLD
+      // Matches the user's specific health condition and sensitivity.
       const threshold = await this.thresholdRepository.findOne({
         where: {
           condition: user.healthProfile.condition,
@@ -104,12 +136,11 @@ export class AlertsLogService {
         },
       });
 
-      // 4. VALIDATE AGAINST THRESHOLD
+      // 4. THRESHOLD VALIDATION AND ALERT GENERATION
       if (threshold && measurement.aqi >= threshold.min_aqi) {
         
-        // --- ACCUMULATION LOGIC ---
-        // Check if an UNREAD alert already exists for this user and THIS exact measurement.
-        // This prevents duplicate alerts within the same synchronization cycle.
+        // --- PREVENT DUPLICATES ---
+        // Verify if an unread alert for this specific measurement already exists.
         const existingAlert = await this.alertLogRepository.findOne({
           where: { 
             user: { id: user.id }, 
@@ -121,12 +152,12 @@ export class AlertsLogService {
         if (!existingAlert) {
           const alertMessage = `[Alert in ${fav.alias || stationName}] ${threshold.message_template} (AQI: ${measurement.aqi})`;
           
-          // Create a NEW record (ensures the badge accumulates: 1, 2, 3...)
+          // Create a NEW record for the notification history
           const newAlert = this.alertLogRepository.create({
             message: alertMessage,
             user: user,
             measurement: measurement,
-            is_read: false, // Default status for new alerts
+            is_read: false, 
           });
 
           await this.alertLogRepository.save(newAlert);
