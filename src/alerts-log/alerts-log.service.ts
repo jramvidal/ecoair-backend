@@ -6,6 +6,7 @@ import { AlertThreshold } from './alert-threshold.entity';
 import { CreateThresholdDto } from './dto/create-threshold.dto';
 import { Measurement } from '../measurements/measurement.entity';
 import { UserFavorite } from '../user-favorites/user-favorite.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AlertsLogService {
@@ -16,6 +17,7 @@ export class AlertsLogService {
     private alertLogRepository: Repository<AlertLog>,
     @InjectRepository(AlertThreshold)
     private thresholdRepository: Repository<AlertThreshold>,
+    private notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -118,6 +120,7 @@ export class AlertsLogService {
       .createQueryBuilder(UserFavorite, 'fav')
       .leftJoinAndSelect('fav.user', 'user')
       .leftJoinAndSelect('user.healthProfile', 'hp')
+      .leftJoinAndSelect('user.devices', 'devices')
       .where('fav.stationId = :stationId', { stationId })
       .getMany();
 
@@ -150,7 +153,9 @@ export class AlertsLogService {
         });
 
         if (!existingAlert) {
-          const alertMessage = `[Alert in ${fav.alias || stationName}] ${threshold.message_template} (AQI: ${measurement.aqi})`;
+          const alertTitle = `Alerta en ${fav.alias || stationName}`;
+          const alertBody = `${threshold.message_template} (AQI: ${measurement.aqi})`;
+          const alertMessage = `[${alertTitle}] ${alertBody}`;
           
           // Create a NEW record for the notification history
           const newAlert = this.alertLogRepository.create({
@@ -162,6 +167,14 @@ export class AlertsLogService {
 
           await this.alertLogRepository.save(newAlert);
           this.logger.warn(`New alert accumulated for ${user.email}. AQI: ${measurement.aqi}`);
+
+          // --- SEND PUSH NOTIFICATION ---
+          const tokens = user.devices?.map(d => d.fcmToken) || [];
+          if (tokens.length > 0) {
+            this.notificationsService.sendMulticastNotification(tokens, alertTitle, alertBody).catch(err => {
+              this.logger.error(`Error enviando push a ${user.email}`, err);
+            });
+          }
         }
       }
     }

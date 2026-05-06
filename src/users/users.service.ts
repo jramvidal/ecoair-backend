@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/co
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
+import { UserDevice } from './user-device.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
@@ -11,6 +12,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(UserDevice)
+    private userDeviceRepository: Repository<UserDevice>,
   ) {}
 
   async create(createUserDto: CreateUserDto) {
@@ -82,5 +85,37 @@ export class UsersService {
     // Return the updated user without the password
     const { password: _, ...result } = updatedUser;
     return result;
+  }
+
+  // --- Push Notifications: Device Tokens ---
+  async registerDeviceToken(userId: number, fcmToken: string, deviceType?: string) {
+    const user = await this.usersRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    // Comprobar si el token ya existe para evitar duplicados
+    const existingDevice = await this.userDeviceRepository.findOne({
+      where: { fcmToken, user: { id: userId } },
+    });
+
+    if (existingDevice) {
+      return existingDevice;
+    }
+
+    const newDevice = this.userDeviceRepository.create({
+      fcmToken,
+      deviceType,
+      user,
+    });
+
+    return this.userDeviceRepository.save(newDevice);
+  }
+
+  async removeDeviceToken(userId: number, fcmToken: string) {
+    return this.userDeviceRepository.delete({
+      fcmToken,
+      user: { id: userId },
+    });
   }
 }

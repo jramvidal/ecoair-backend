@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginDto } from './dto/login.dto';
@@ -30,5 +30,26 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Profile updated successfully.' })
   async updateProfile(@Param('id') id: string, @Body() updateData: any) {
     return this.usersService.updateProfile(Number(id), updateData);
+  }
+
+  // --- Push Notifications Endpoints ---
+  @Post(':id/devices')
+  @ApiOperation({ summary: 'Register a device token for push notifications' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  async registerDeviceToken(
+    @Param('id') id: string,
+    @Body() data: { fcmToken: string; deviceType?: string },
+  ) {
+    return this.usersService.registerDeviceToken(Number(id), data.fcmToken, data.deviceType);
+  }
+
+  @Delete(':id/devices')
+  @ApiOperation({ summary: 'Remove a device token' })
+  @ApiParam({ name: 'id', description: 'User ID' })
+  async removeDeviceToken(
+    @Param('id') id: string,
+    @Body() data: { fcmToken: string },
+  ) {
+    return this.usersService.removeDeviceToken(Number(id), data.fcmToken);
   }
 }

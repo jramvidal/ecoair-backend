@@ -8,6 +8,7 @@ import { MeasurementsModule } from './measurements/measurements.module';
 import { StationsModule } from './stations/stations.module';
 import { UserFavoritesModule } from './user-favorites/user-favorites.module';
 import { AlertsLogModule } from './alerts-log/alerts-log.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -38,7 +39,8 @@ import { AlertsLogModule } from './alerts-log/alerts-log.module';
     MeasurementsModule,
     StationsModule,
     UserFavoritesModule,
-    AlertsLogModule, 
+    AlertsLogModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

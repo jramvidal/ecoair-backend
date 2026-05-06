@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToOne, Joi
 import { HealthProfile } from '../health-profiles/health-profile.entity';
 import { Role } from './enums/role.enum';
 import { AlertLog } from '../alerts-log/alerts-log.entity'; // <-- Importación necesaria
+import { UserDevice } from './user-device.entity';
 
 @Entity('users')
 export class User {
@@ -34,4 +35,7 @@ export class User {
   // Inverse relationship with alerts for the notification system.
   @OneToMany(() => AlertLog, (alert) => alert.user)
   alerts!: AlertLog[];
+
+  @OneToMany(() => UserDevice, (device) => device.user)
+  devices!: UserDevice[];
 }
