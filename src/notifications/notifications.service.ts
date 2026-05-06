@@ -1,12 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
 import * as admin from 'firebase-admin';
 import * as path from 'path';
+import { UserDevice } from '../users/user-device.entity';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor() {
+  constructor(
+    @InjectRepository(UserDevice)
+    private userDeviceRepository: Repository<UserDevice>,
+  ) {
     this.initializeFirebase();
   }
 
@@ -64,14 +70,26 @@ export class NotificationsService {
       
       this.logger.log(`Notifications sent: ${response.successCount} successful, ${response.failureCount} failed`);
       
-      // Aquí se podrían limpiar los tokens que han fallado por estar caducados
+      // Limpiamos los tokens que han fallado por estar caducados (NotRegistered)
       if (response.failureCount > 0) {
+        const failedTokens: string[] = [];
+        
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
             this.logger.warn(`Failed to send to token ${tokens[idx]}: ${resp.error}`);
-            // TODO: Delete invalid tokens from DB
+            
+            // Si el error es NotRegistered o InvalidRegistration, el token ya no sirve
+            if (resp.error?.code === 'messaging/invalid-registration-token' || 
+                resp.error?.code === 'messaging/registration-token-not-registered') {
+              failedTokens.push(tokens[idx]);
+            }
           }
         });
+
+        if (failedTokens.length > 0) {
+          await this.userDeviceRepository.delete({ fcmToken: In(failedTokens) });
+          this.logger.log(`Deleted ${failedTokens.length} invalid tokens from database.`);
+        }
       }
     } catch (error) {
       this.logger.error('Error sending multicast push notification', error);
