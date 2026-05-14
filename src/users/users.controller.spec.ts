@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
-import { describe, it, expect, jest, beforeEach } from '@jest/globals'; 
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 describe('UsersController', () => {
   let controller: UsersController;
